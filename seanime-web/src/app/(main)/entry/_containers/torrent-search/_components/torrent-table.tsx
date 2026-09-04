@@ -38,6 +38,7 @@ type TorrentTable = {
     includedSpecialProviders?: string[]
     type: TorrentSelectionType
     searchAcrossProviders: boolean
+    preserveProviderOrder: boolean
     isSpoiler: boolean
 }
 
@@ -59,6 +60,7 @@ export const TorrentTable = memo((
         includedSpecialProviders = [],
         type,
         searchAcrossProviders,
+        preserveProviderOrder,
         isSpoiler,
     }: TorrentTable) => {
     // Use hooks for sorting and filtering
@@ -70,7 +72,9 @@ export const TorrentTable = memo((
     const filteredTorrents = filterItems(torrents, torrentMetadata, filters)
 
     // Sort the torrents after filtering using the generic helper
-    const sortedTorrents = sortItems(filteredTorrents, sortField, sortDirection)
+    const sortedTorrents = preserveProviderOrder
+        ? filteredTorrents
+        : sortItems(filteredTorrents, sortField, sortDirection)
 
     return (
         <>
@@ -90,6 +94,7 @@ export const TorrentTable = memo((
                         filters={filters}
                         onSortChange={handleSortChange}
                         onFilterChange={handleFilterChange}
+                        preserveOrder={preserveProviderOrder}
                     />
                     <ScrollAreaBox className={searchAcrossProviders ? "h-[calc(100dvh_-_30rem)]" : "h-[calc(100dvh_-_26rem)]"}>
                         <TorrentList>

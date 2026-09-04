@@ -32,6 +32,7 @@ type TorrentPreviewList = {
     torrentMetadata: Record<string, Torrent_TorrentMetadata> | undefined
     includedSpecialProviders?: string[]
     searchAcrossProviders: boolean
+    preserveProviderOrder: boolean
     isSpoiler: boolean
 }
 
@@ -47,6 +48,7 @@ export const TorrentPreviewList = React.memo((
         torrentMetadata,
         includedSpecialProviders = [],
         searchAcrossProviders,
+        preserveProviderOrder,
         isSpoiler,
     }: TorrentPreviewList) => {
     // Use hooks for sorting and filtering
@@ -69,7 +71,9 @@ export const TorrentPreviewList = React.memo((
     const filteredPreviews = filterItems(previews, torrentMetadata, filters)
 
     // Sort the previews based on current sort settings using the generic helper
-    const sortedPreviews = sortItems(filteredPreviews, sortField, sortDirection)
+    const sortedPreviews = preserveProviderOrder
+        ? filteredPreviews
+        : sortItems(filteredPreviews, sortField, sortDirection)
 
     return (
         <div className="space-y-2" data-torrent-preview-list>
@@ -81,6 +85,7 @@ export const TorrentPreviewList = React.memo((
                 filters={filters}
                 onSortChange={handleSortChange}
                 onFilterChange={handleFilterChange}
+                preserveOrder={preserveProviderOrder}
             />
             <ScrollAreaBox
                 className={cn(

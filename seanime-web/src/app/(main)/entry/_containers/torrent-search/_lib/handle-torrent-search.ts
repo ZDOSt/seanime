@@ -31,6 +31,8 @@ export const __torrentSearch_extraProviderIdsAtom = atomWithStorage<string[]>("s
     undefined,
     { getOnInit: true })
 
+export const AIOSTREAMS_PROVIDER_ID = "aiostreams-torrent-provider"
+
 const retryDelays = [60_000, 120_000, 300_000]
 
 export function useHandleTorrentSearch(props: TorrentSearchHookProps) {
@@ -110,6 +112,9 @@ export function useHandleTorrentSearch(props: TorrentSearchHookProps) {
         if (!searchAcrossProviders) return selectedProviderExtension.id
         return [selectedProviderExtension.id, ...activeExtraProviderIds].join(",")
     }, [activeExtraProviderIds, searchAcrossProviders, selectedProviderExtension?.id])
+
+    const preserveProviderOrder = selectedProviderExtensionId === AIOSTREAMS_PROVIDER_ID
+        && (!searchAcrossProviders || activeExtraProviderIds.length === 0)
 
     const warnings = {
         noProvider: !selectedProviderExtension,
@@ -266,6 +271,7 @@ export function useHandleTorrentSearch(props: TorrentSearchHookProps) {
         selectedProviderExtension,
         selectedProviderExtensionId,
         setSelectedProviderExtensionId,
+        preserveProviderOrder,
         globalFilter,
         setGlobalFilter,
         debouncedGlobalFilter,

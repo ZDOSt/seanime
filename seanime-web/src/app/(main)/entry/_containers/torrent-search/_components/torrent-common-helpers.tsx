@@ -281,6 +281,7 @@ export const TorrentFilterSortControls: React.FC<{
     filters: TorrentFilters,
     onSortChange: (field: SortField) => void,
     onFilterChange: (filterName: keyof TorrentFilters, value: boolean | "indeterminate") => void
+    preserveOrder?: boolean,
 }> = ({
     resultCount,
     sortField,
@@ -288,6 +289,7 @@ export const TorrentFilterSortControls: React.FC<{
     filters,
     onSortChange,
     onFilterChange,
+    preserveOrder = false,
 }) => {
     const isAnyFilterActive = anyFilterActive(filters)
 
@@ -401,46 +403,48 @@ export const TorrentFilterSortControls: React.FC<{
                         </div>
                     </div>
                 </Popover>
-                <Button
-                    size="xs"
-                    intent="gray-basic"
-                    leftIcon={<>
-                        {getSortIcon(sortField, "seeders", sortDirection)}
-                    </>}
-                    onClick={() => onSortChange("seeders")}
-                >
-                    Seeders
-                </Button>
-                <Button
-                    size="xs"
-                    intent="gray-basic"
-                    leftIcon={<>
-                        {getSortIcon(sortField, "size", sortDirection)}
-                    </>}
-                    onClick={() => onSortChange("size")}
-                >
-                    Size
-                </Button>
-                <Button
-                    size="xs"
-                    intent="gray-basic"
-                    leftIcon={<>
-                        {getSortIcon(sortField, "date", sortDirection)}
-                    </>}
-                    onClick={() => onSortChange("date")}
-                >
-                    Date
-                </Button>
-                <Button
-                    size="xs"
-                    intent="gray-basic"
-                    leftIcon={<>
-                        {getSortIcon(sortField, "resolution", sortDirection)}
-                    </>}
-                    onClick={() => onSortChange("resolution")}
-                >
-                    Resolution
-                </Button>
+                {!preserveOrder && <>
+                    <Button
+                        size="xs"
+                        intent="gray-basic"
+                        leftIcon={<>
+                            {getSortIcon(sortField, "seeders", sortDirection)}
+                        </>}
+                        onClick={() => onSortChange("seeders")}
+                    >
+                        Seeders
+                    </Button>
+                    <Button
+                        size="xs"
+                        intent="gray-basic"
+                        leftIcon={<>
+                            {getSortIcon(sortField, "size", sortDirection)}
+                        </>}
+                        onClick={() => onSortChange("size")}
+                    >
+                        Size
+                    </Button>
+                    <Button
+                        size="xs"
+                        intent="gray-basic"
+                        leftIcon={<>
+                            {getSortIcon(sortField, "date", sortDirection)}
+                        </>}
+                        onClick={() => onSortChange("date")}
+                    >
+                        Date
+                    </Button>
+                    <Button
+                        size="xs"
+                        intent="gray-basic"
+                        leftIcon={<>
+                            {getSortIcon(sortField, "resolution", sortDirection)}
+                        </>}
+                        onClick={() => onSortChange("resolution")}
+                    >
+                        Resolution
+                    </Button>
+                </>}
             </div>
         </div>
     )

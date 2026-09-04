@@ -74,6 +74,7 @@ export function TorrentSearchContainer({ type, entry }: { type: TorrentSelection
         selectedProviderExtension,
         selectedProviderExtensionId,
         setSelectedProviderExtensionId,
+        preserveProviderOrder,
         providerExtensions,
         globalFilter,
         setGlobalFilter,
@@ -128,20 +129,26 @@ export function TorrentSearchContainer({ type, entry }: { type: TorrentSelection
     }, [searchType, entry.media?.title])
 
     const torrents = React.useMemo(() => {
-        return [...(data?.torrents ?? [])].sort((a, b) => {
+        const result = [...(data?.torrents ?? [])]
+        if (preserveProviderOrder) return result
+
+        return result.sort((a, b) => {
             if (a.isBestRelease && !b.isBestRelease) return -1
             if (!a.isBestRelease && b.isBestRelease) return 1
             return 0
         })
-    }, [data?.torrents])
+    }, [data?.torrents, preserveProviderOrder])
 
     const previews = React.useMemo(() => {
-        return [...(data?.previews ?? [])].sort((a, b) => {
+        const result = [...(data?.previews ?? [])]
+        if (preserveProviderOrder) return result
+
+        return result.sort((a, b) => {
             if (a.torrent?.isBestRelease && !b.torrent?.isBestRelease) return -1
             if (!a.torrent?.isBestRelease && b.torrent?.isBestRelease) return 1
             return 0
         })
-    }, [data?.previews])
+    }, [data?.previews, preserveProviderOrder])
 
     const debridInstantAvailability = React.useMemo(() => serverStatus?.debridSettings?.enabled ? data?.debridInstantAvailability ?? {} : {},
         [data?.debridInstantAvailability, serverStatus?.debridSettings?.enabled])
@@ -568,6 +575,7 @@ export function TorrentSearchContainer({ type, entry }: { type: TorrentSelection
                                         torrentMetadata={data?.torrentMetadata}
                                         includedSpecialProviders={data?.includedSpecialProviders}
                                         searchAcrossProviders={searchAcrossProviders}
+                                        preserveProviderOrder={preserveProviderOrder}
                                         isSpoiler={spoiler.isSpoiler}
                                         // animeMetadata={data?.animeMetadata}
                                     />
@@ -593,6 +601,7 @@ export function TorrentSearchContainer({ type, entry }: { type: TorrentSelection
                                         torrentMetadata={data?.torrentMetadata}
                                         includedSpecialProviders={data?.includedSpecialProviders}
                                         searchAcrossProviders={searchAcrossProviders}
+                                        preserveProviderOrder={preserveProviderOrder}
                                         isSpoiler={spoiler.isSpoiler}
                                     />
                                 </>
