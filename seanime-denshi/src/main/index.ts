@@ -218,7 +218,7 @@ setupLogging()
 setupChromiumFlags()
 const _development = process.env.NODE_ENV === "development"
 const _isRsbuildFrontend = true
-const DEFAULT_UPDATE_FEED_URL = "https://github.com/5rahim/seanime/releases/latest/download"
+const DEFAULT_UPDATE_FEED_URL = "https://github.com/ZDOSt/seanime/releases/latest/download"
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Custom protocol for web content

@@ -26,7 +26,6 @@ import { ServerSettings } from "@/app/(main)/settings/_containers/server-setting
 import { TorrentstreamSettings } from "@/app/(main)/settings/_containers/torrentstream-settings"
 import { UISettings } from "@/app/(main)/settings/_containers/ui-settings"
 import { PageWrapper } from "@/components/shared/page-wrapper"
-import { SeaLink } from "@/components/shared/sea-link"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -46,7 +45,6 @@ import { useAtom } from "jotai/react"
 import capitalize from "lodash/capitalize"
 import React from "react"
 import { UseFormReturn } from "react-hook-form"
-import { BiDonateHeart } from "react-icons/bi"
 import { CgMediaPodcast } from "react-icons/cg"
 import { FaDiscord } from "react-icons/fa"
 import { HiOutlineServerStack } from "react-icons/hi2"
@@ -315,21 +313,6 @@ export default function Page() {
                                 </p>
                             </div>
 
-                            <div className="flex justify-center !mt-0 pb-4">
-                                <SeaLink
-                                    href="https://github.com/sponsors/5rahim"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    <Button
-                                        intent="gray-link"
-                                        size="md"
-                                        leftIcon={<BiDonateHeart className="text-lg" />}
-                                    >
-                                        Donate
-                                    </Button>
-                                </SeaLink>
-                            </div>
                         </div>
                     </TabsList>
 

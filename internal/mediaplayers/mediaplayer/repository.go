@@ -262,10 +262,13 @@ func (m *Repository) Play(path string) error {
 
 		return nil
 	case "mpc-hc":
-		err := m.MpcHc.Start()
-		if err != nil {
-			m.Logger.Error().Err(err).Msg("media player: Could not start media player using MPC-HC")
-			return fmt.Errorf("could not start MPC-HC, %w", err)
+		var err error
+		if !mpchc2.IsRemoteURL(path) {
+			err = m.MpcHc.Start()
+			if err != nil {
+				m.Logger.Error().Err(err).Msg("media player: Could not start media player using MPC-HC")
+				return fmt.Errorf("could not start MPC-HC, %w", err)
+			}
 		}
 		_, err = m.MpcHc.OpenAndPlay(path)
 		if err != nil {
@@ -414,8 +417,9 @@ func (m *Repository) Stream(streamUrl string, episode int, mediaId int, windowTi
 	case "vlc":
 		err = m.VLC.Start()
 	case "mpc-hc":
-		err = m.MpcHc.Start()
-		_, err = m.MpcHc.OpenAndPlay(streamUrl)
+		if !mpchc2.IsRemoteURL(streamUrl) {
+			err = m.MpcHc.Start()
+		}
 	case "mpv":
 		// MPV does not need to be started
 	case "iina":

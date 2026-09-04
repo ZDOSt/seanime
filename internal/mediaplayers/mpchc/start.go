@@ -2,12 +2,17 @@ package mpchc
 
 import (
 	"fmt"
+	"path/filepath"
 	"seanime/internal/util"
 	"strings"
 	"time"
 )
 
 func (api *MpcHc) getExecutableName() string {
+	if isLegacyBridgePath(api.Path) {
+		return "mpc-hc64.exe"
+	}
+
 	if len(api.Path) > 0 {
 		if strings.Contains(api.Path, "64") {
 			return "mpc-hc64.exe"
@@ -20,11 +25,16 @@ func (api *MpcHc) getExecutableName() string {
 
 func (api *MpcHc) GetExecutablePath() string {
 
-	if len(api.Path) > 0 {
+	if len(api.Path) > 0 && !isLegacyBridgePath(api.Path) {
 		return api.Path
 	}
 
 	return "C:\\Program Files\\MPC-HC\\mpc-hc64.exe"
+}
+
+func isLegacyBridgePath(path string) bool {
+	base := strings.ToLower(filepath.Base(strings.Trim(path, "\\\"")))
+	return base == "seanime-mpc-desktop-bridge.exe" || base == "seanime-mpc-bridge.exe"
 }
 
 func (api *MpcHc) isRunning(executable string) bool {

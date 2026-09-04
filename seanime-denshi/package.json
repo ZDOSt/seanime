@@ -53,7 +53,7 @@
     "generateUpdatesFilesForAllChannels": true,
     "publish": {
       "provider": "generic",
-      "url": "https://github.com/5rahim/seanime/releases/latest/download",
+      "url": "https://github.com/ZDOSt/seanime/releases/latest/download",
       "channel": "latest",
       "publishAutoUpdate": true,
       "useMultipleRangeRequest": false
@@ -78,6 +78,7 @@
       "identity": "-"
     },
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "nsis",
