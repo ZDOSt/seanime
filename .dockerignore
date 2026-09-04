@@ -1,0 +1,12 @@
+.git
+.github
+**/node_modules
+seanime-web/out
+seanime-web/out-*
+web
+out
+out-*
+data
+logs
+test/config.toml
+*.db
