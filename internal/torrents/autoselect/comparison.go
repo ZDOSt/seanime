@@ -5,6 +5,7 @@ import (
 	"context"
 	hibiketorrent "seanime/internal/extension/hibike/torrent"
 	"seanime/internal/library/anime"
+	itorrent "seanime/internal/torrents/torrent"
 	"seanime/internal/util"
 	"slices"
 	"strings"
@@ -72,8 +73,14 @@ func (s *AutoSelect) filterAndSort(
 	// Filter
 	candidates = s.filterCandidates(candidates, profile)
 
-	// Sort by profile scores first
-	s.sortCandidates(candidates, profile)
+	// AIOStreams has already applied its configured ranking. Keep its order,
+	// while still calculating scores for status reporting and cache thresholds.
+	preserveSearchOrder := preservesSearchOrder(torrents)
+	if preserveSearchOrder {
+		s.scoreCandidates(candidates, profile)
+	} else {
+		s.sortCandidates(candidates, profile)
+	}
 
 	var filteredTorrents []*hibiketorrent.AnimeTorrent
 
@@ -358,10 +365,7 @@ func (s *AutoSelect) filterCandidates(candidates []*candidate, profile *anime.Au
 }
 
 func (s *AutoSelect) sortCandidates(candidates []*candidate, profile *anime.AutoSelectProfile) {
-	for _, c := range candidates {
-		c.priority, c.bonus = s.calculateScoreBreakdown(c, profile)
-		c.score = c.priority + c.bonus
-	}
+	s.scoreCandidates(candidates, profile)
 
 	slices.SortStableFunc(candidates, func(a, b *candidate) int {
 		if a.priority != b.priority {
@@ -379,6 +383,25 @@ func (s *AutoSelect) sortCandidates(candidates []*candidate, profile *anime.Auto
 		// If the scores are the same, sort by seeders
 		return cmp.Compare(b.torrent.Seeders, a.torrent.Seeders)
 	})
+}
+
+func (s *AutoSelect) scoreCandidates(candidates []*candidate, profile *anime.AutoSelectProfile) {
+	for _, c := range candidates {
+		c.priority, c.bonus = s.calculateScoreBreakdown(c, profile)
+		c.score = c.priority + c.bonus
+	}
+}
+
+func preservesSearchOrder(torrents []*hibiketorrent.AnimeTorrent) bool {
+	if len(torrents) == 0 {
+		return false
+	}
+	for _, t := range torrents {
+		if t == nil || t.Provider != itorrent.AIOStreamsProviderID {
+			return false
+		}
+	}
+	return true
 }
 
 // smartCachedPrioritization applies the postSearchSort (which identifies cached torrents)
@@ -408,6 +431,11 @@ func (s *AutoSelect) smartCachedPrioritization(
 	topScore := 0
 	if len(candidates) > 0 {
 		topScore = candidates[0].score
+		for _, c := range candidates[1:] {
+			if c.score > topScore {
+				topScore = c.score
+			}
+		}
 	}
 
 	// cached torrents must be within 30% of the top score

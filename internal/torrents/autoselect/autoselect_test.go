@@ -4,6 +4,7 @@ import (
 	"context"
 	hibiketorrent "seanime/internal/extension/hibike/torrent"
 	"seanime/internal/library/anime"
+	itorrent "seanime/internal/torrents/torrent"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -249,6 +250,23 @@ func TestAutoSelect_Sort(t *testing.T) {
 			assert.Equal(t, tt.expected, sortedNames)
 		})
 	}
+}
+
+func TestAutoSelectPreservesAIOStreamsOrder(t *testing.T) {
+	s := newTestAutoSelect()
+	torrents := []*hibiketorrent.AnimeTorrent{
+		{Name: "[AIOStreams] First result - 01 [720p].mkv", InfoHash: "first", Seeders: 1, Provider: itorrent.AIOStreamsProviderID},
+		{Name: "[AIOStreams] Popular result - 01 [1080p].mkv", InfoHash: "popular", Seeders: 999, Provider: itorrent.AIOStreamsProviderID},
+	}
+
+	result := s.filterAndSort(context.Background(), torrents, &anime.AutoSelectProfile{
+		Resolutions: []string{"1080p"},
+	}, nil)
+
+	assert.Equal(t, []string{"first", "popular"}, []string{
+		result[0].InfoHash,
+		result[1].InfoHash,
+	})
 }
 
 func TestAutoSelect_Filter_SourceTokenDoesNotMatchInsideWord(t *testing.T) {

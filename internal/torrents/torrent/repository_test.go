@@ -131,6 +131,77 @@ func TestSearchAnimeSimpleFallbackDedupAndSorting(t *testing.T) {
 	require.Equal(t, media.GetTotalEpisodeCount(), lastSearch.Media.EpisodeCount)
 }
 
+func TestSearchAnimePreservesAIOStreamsOrder(t *testing.T) {
+	metadataCache.Clear()
+	provider := newStubAnimeProvider(hibiketorrent.AnimeProviderSettings{
+		Type:           hibiketorrent.AnimeProviderTypeSpecial,
+		CanSmartSearch: true,
+	})
+	provider.smartResults = []*hibiketorrent.AnimeTorrent{
+		{Name: "[AIOStreams] First result - 01 (720p).mkv", InfoHash: "first", Seeders: 1},
+		{Name: "[AIOStreams] Best result - 01 (1080p).mkv", InfoHash: "best", Seeders: 2, IsBestRelease: true},
+		{Name: "[AIOStreams] Popular result - 01 (1080p).mkv", InfoHash: "popular", Seeders: 999},
+		{Name: "[AIOStreams] Duplicate result - 01 (1080p).mkv", InfoHash: "first", Seeders: 9999},
+	}
+
+	repo := newTorrentRepositoryForTests(map[string]*stubAnimeProvider{
+		AIOStreamsProviderID: provider,
+	}, testmocks.NewFakeMetadataProviderBuilder().Build())
+	repo.SetSettings(&RepositorySettings{DefaultAnimeProvider: AIOStreamsProviderID})
+
+	media := testmocks.NewBaseAnimeBuilder(102, "Example Show").WithEpisodes(12).Build()
+	result, err := repo.SearchAnime(context.Background(), AnimeSearchOptions{
+		Provider:      AIOStreamsProviderID,
+		Type:          AnimeSearchTypeSmart,
+		Media:         media,
+		EpisodeNumber: 1,
+		SkipPreviews:  true,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, result.Torrents, 3)
+	require.Equal(t, []string{"first", "best", "popular"}, []string{
+		result.Torrents[0].InfoHash,
+		result.Torrents[1].InfoHash,
+		result.Torrents[2].InfoHash,
+	})
+}
+
+func TestSearchAnimeDoesNotResortAIOStreamsHookResults(t *testing.T) {
+	metadataCache.Clear()
+	hm := useTestHookManager(t)
+	provider := newStubAnimeProvider(hibiketorrent.AnimeProviderSettings{Type: hibiketorrent.AnimeProviderTypeSpecial})
+	provider.searchResults = []*hibiketorrent.AnimeTorrent{
+		{Name: "[AIOStreams] First result - 01 (1080p).mkv", InfoHash: "first", Seeders: 1},
+		{Name: "[AIOStreams] Second result - 01 (1080p).mkv", InfoHash: "second", Seeders: 999},
+	}
+	hm.OnTorrentSearch().BindFunc(func(e hook_resolver.Resolver) error {
+		event := e.(*TorrentSearchEvent)
+		event.SearchData.Torrents = []*hibiketorrent.AnimeTorrent{
+			event.SearchData.Torrents[1],
+			event.SearchData.Torrents[0],
+		}
+		return event.Next()
+	})
+
+	repo := newTorrentRepositoryForTests(map[string]*stubAnimeProvider{
+		AIOStreamsProviderID: provider,
+	}, testmocks.NewFakeMetadataProviderBuilder().Build())
+	media := testmocks.NewBaseAnimeBuilder(103, "Example Show").WithEpisodes(12).Build()
+	result, err := repo.SearchAnime(context.Background(), AnimeSearchOptions{
+		Provider: AIOStreamsProviderID,
+		Type:     AnimeSearchTypeSimple,
+		Media:    media,
+		Query:    "Example Show",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"second", "first"}, []string{
+		result.Torrents[0].InfoHash,
+		result.Torrents[1].InfoHash,
+	})
+}
+
 func TestSearchAnimeUsesRequestedHookOverride(t *testing.T) {
 	metadataCache.Clear()
 	hm := useTestHookManager(t)
