@@ -68,6 +68,7 @@ type (
 		clientMpvCoreEventSubscribers      *result.Map[string, *ClientEventSubscriber]
 		nakamaEventSubscribers             *result.Map[string, *ClientEventSubscriber]
 		playlistEventSubscribers           *result.Map[string, *ClientEventSubscriber]
+		pendingTargetedEvents              map[string]pendingWSEvent
 	}
 
 	ClientEventSubscriber struct {
@@ -86,7 +87,14 @@ type (
 		Type    string      `json:"type"`
 		Payload interface{} `json:"payload"`
 	}
+
+	pendingWSEvent struct {
+		event     WSEvent
+		expiresAt time.Time
+	}
 )
+
+const pendingTargetedEventTTL = 2 * time.Minute
 
 // NewWSEventManager creates a new WSEventManager instance for App.
 func NewWSEventManager(logger *zerolog.Logger) *WSEventManager {
@@ -99,6 +107,7 @@ func NewWSEventManager(logger *zerolog.Logger) *WSEventManager {
 		clientMpvCoreEventSubscribers:      result.NewMap[string, *ClientEventSubscriber](),
 		nakamaEventSubscribers:             result.NewMap[string, *ClientEventSubscriber](),
 		playlistEventSubscribers:           result.NewMap[string, *ClientEventSubscriber](),
+		pendingTargetedEvents:              make(map[string]pendingWSEvent),
 	}
 	GlobalWSEventManager = &GlobalWSEventManagerWrapper{
 		WSEventManager: ret,
@@ -123,8 +132,13 @@ func (m *WSEventManager) ExitIfNoConnsAsDesktopSidecar() {
 		exitTimeout := 10 * time.Second
 
 		for range ticker.C {
+			m.mu.Lock()
+			noConnections := len(m.Conns) == 0
+			hadConnection := m.hasHadConnection
+			m.mu.Unlock()
+
 			// Check WebSocket connection status
-			if len(m.Conns) == 0 && m.hasHadConnection {
+			if noConnections && hadConnection {
 				// If not connected and first detection of connection loss
 				if connectionLostTime.IsZero() {
 					m.Logger.Warn().Msg("ws: No connection detected. Starting countdown...")
@@ -150,17 +164,37 @@ func (m *WSEventManager) AddConn(id string, conn *websocket.Conn, platform ...st
 		clientPlatform = platform[0]
 	}
 
+	m.mu.Lock()
+	if m.pendingTargetedEvents == nil {
+		m.pendingTargetedEvents = make(map[string]pendingWSEvent)
+	}
 	m.hasHadConnection = true
 	m.Conns = append(m.Conns, &WSConn{
 		ID:       id,
 		Platform: clientPlatform,
 		Conn:     conn,
 	})
+	pending, hasPending := m.pendingTargetedEvents[id]
+	if hasPending {
+		delete(m.pendingTargetedEvents, id)
+	}
+	m.mu.Unlock()
+
+	if hasPending && time.Now().Before(pending.expiresAt) && conn != nil {
+		if err := conn.WriteJSON(pending.event); err != nil {
+			m.mu.Lock()
+			m.pendingTargetedEvents[id] = pending
+			m.mu.Unlock()
+		}
+	}
 }
 
 func (m *WSEventManager) RemoveConn(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	for i, conn := range m.Conns {
-		if conn.ID == id {
+		if conn != nil && conn.ID == id {
 			m.Conns = append(m.Conns[:i], m.Conns[i+1:]...)
 			break
 		}
@@ -170,7 +204,8 @@ func (m *WSEventManager) RemoveConn(id string) {
 // SendEvent sends a websocket event to the client.
 func (m *WSEventManager) SendEvent(t string, payload interface{}) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	conns := append([]*WSConn(nil), m.Conns...)
+	m.mu.Unlock()
 	// If there's no connection, do nothing
 	//if m.Conn == nil {
 	//	return
@@ -180,7 +215,10 @@ func (m *WSEventManager) SendEvent(t string, payload interface{}) {
 		m.Logger.Trace().Str("type", t).Msg("ws: Sending message")
 	}
 
-	for _, conn := range m.Conns {
+	for _, conn := range conns {
+		if conn == nil || conn.Conn == nil {
+			continue
+		}
 		err := conn.Conn.WriteJSON(WSEvent{
 			Type:    t,
 			Payload: payload,
@@ -205,9 +243,33 @@ func (m *WSEventManager) SendEvent(t string, payload interface{}) {
 // SendEventTo sends a websocket event to the specified client.
 func (m *WSEventManager) SendEventTo(clientId string, t string, payload interface{}, noLog ...bool) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	targets := make([]*WSConn, 0)
 	for _, conn := range m.Conns {
+		if conn != nil && conn.ID == clientId && conn.Conn != nil {
+			targets = append(targets, conn)
+		}
+	}
+
+	if len(targets) == 0 {
+		if t == ExternalPlayerOpenURL && clientId != "" {
+			if m.pendingTargetedEvents == nil {
+				m.pendingTargetedEvents = make(map[string]pendingWSEvent)
+			}
+			m.pendingTargetedEvents[clientId] = pendingWSEvent{
+				event: WSEvent{
+					Type:    t,
+					Payload: payload,
+				},
+				expiresAt: time.Now().Add(pendingTargetedEventTTL),
+			}
+		}
+		m.mu.Unlock()
+		return
+	}
+	m.mu.Unlock()
+
+	sent := false
+	for _, conn := range targets {
 		if conn.ID == clientId {
 			if t != "pong" {
 				if len(noLog) == 0 || !noLog[0] {
@@ -218,11 +280,28 @@ func (m *WSEventManager) SendEventTo(clientId string, t string, payload interfac
 					m.Logger.Trace().Str("to", clientId).Str("type", t).Str("payload", truncated).Msg("ws: Sending message")
 				}
 			}
-			_ = conn.Conn.WriteJSON(WSEvent{
+			if err := conn.Conn.WriteJSON(WSEvent{
 				Type:    t,
 				Payload: payload,
-			})
+			}); err == nil {
+				sent = true
+			}
 		}
+	}
+
+	if !sent && t == ExternalPlayerOpenURL && clientId != "" {
+		m.mu.Lock()
+		if m.pendingTargetedEvents == nil {
+			m.pendingTargetedEvents = make(map[string]pendingWSEvent)
+		}
+		m.pendingTargetedEvents[clientId] = pendingWSEvent{
+			event: WSEvent{
+				Type:    t,
+				Payload: payload,
+			},
+			expiresAt: time.Now().Add(pendingTargetedEventTTL),
+		}
+		m.mu.Unlock()
 	}
 }
 
@@ -231,7 +310,7 @@ func (m *WSEventManager) SendStringTo(clientId string, s string) {
 	defer m.mu.Unlock()
 
 	for _, conn := range m.Conns {
-		if conn.ID == clientId {
+		if conn != nil && conn.ID == clientId && conn.Conn != nil {
 			_ = conn.Conn.WriteMessage(websocket.TextMessage, []byte(s))
 		}
 	}
