@@ -3,10 +3,12 @@ import { useGetAnimeEntry } from "@/api/hooks/anime_entries.hooks"
 import { PlaybackManager_PlaybackState } from "@/app/(main)/_features/progress-tracking/_lib/playback-manager.types"
 import { useServerStatus } from "@/app/(main)/_hooks/use-server-status"
 import { useHandleStartDebridStream } from "@/app/(main)/entry/_containers/debrid-stream/_lib/handle-debrid-stream"
+import { __debridStream_currentSessionAutoSelectAtom } from "@/app/(main)/entry/_containers/debrid-stream/debrid-stream-page"
 import { useHandleStartTorrentStream } from "@/app/(main)/entry/_containers/torrent-stream/_lib/handle-torrent-stream"
+import { __torrentStream_currentSessionAutoSelectAtom } from "@/app/(main)/entry/_containers/torrent-stream/torrent-stream-page"
 import { useHandlePlayMedia } from "@/app/(main)/entry/_lib/handle-play-media"
 import { logger } from "@/lib/helpers/debug"
-import { atom } from "jotai"
+import { atom, useAtomValue } from "jotai"
 import { useAtom } from "jotai/react"
 import { atomWithStorage } from "jotai/utils"
 import React, { useState } from "react"
@@ -60,12 +62,25 @@ export function useAutoPlaySelectedTorrent() {
 export function useTorrentstreamAutoplay() {
     const [info, setInfo] = useAtom(__autoPlay_stateAtom)
     const [nextEpisode, setNextEpisode] = useAtom(__autoplay_nextEpisodeAtom)
+    const serverStatus = useServerStatus()
+    const sessionAutoSelect = useAtomValue(__torrentStream_currentSessionAutoSelectAtom)
+    const autoSelect = sessionAutoSelect ?? serverStatus?.torrentstreamSettings?.autoSelect
 
     const { handleAutoSelectStream, handleStreamSelection } = useHandleStartTorrentStream()
     const { autoPlayTorrent, setAutoPlayTorrent } = useAutoPlaySelectedTorrent()
 
+    const setTorrentstreamAutoplayInfo = React.useCallback((nextInfo: AutoplayInfo | null) => {
+        setInfo(autoSelect ? nextInfo : null)
+        if (!autoSelect) setNextEpisode(null)
+    }, [autoSelect, setInfo, setNextEpisode])
+
     function handleAutoplayNextTorrentstreamEpisode(preload?: boolean) {
         if (!info) return
+        if (!autoSelect) {
+            setInfo(null)
+            setNextEpisode(null)
+            return
+        }
         const { entry, episodeNumber, aniDBEpisode, allEpisodes } = info
 
         // Get the torrent that was previously saved by autoplay
@@ -125,23 +140,39 @@ export function useTorrentstreamAutoplay() {
 
 
     return {
-        torrentstreamAutoplayInfo: info?.type === "torrentstream" ? info : null,
-        hasNextTorrentstreamEpisode: !!info && info.type === "torrentstream",
-        setTorrentstreamAutoplayInfo: setInfo,
+        torrentstreamAutoplayInfo: autoSelect && info?.type === "torrentstream" ? info : null,
+        hasNextTorrentstreamEpisode: autoSelect && !!info && info.type === "torrentstream",
+        setTorrentstreamAutoplayInfo,
         autoplayNextTorrentstreamEpisode: handleAutoplayNextTorrentstreamEpisode,
-        resetTorrentstreamAutoplayInfo: () => setInfo(null),
+        resetTorrentstreamAutoplayInfo: () => {
+            setInfo(null)
+            setNextEpisode(null)
+        },
     }
 }
 
 export function useDebridstreamAutoplay() {
     const [info, setInfo] = useAtom(__autoPlay_stateAtom)
     const [nextEpisode, setNextEpisode] = useAtom(__autoplay_nextEpisodeAtom)
+    const serverStatus = useServerStatus()
+    const sessionAutoSelect = useAtomValue(__debridStream_currentSessionAutoSelectAtom)
+    const autoSelect = sessionAutoSelect ?? serverStatus?.debridSettings?.streamAutoSelect
 
     const { handleAutoSelectStream, handleStreamSelection } = useHandleStartDebridStream()
     const { autoPlayTorrent } = useAutoPlaySelectedTorrent()
 
+    const setDebridstreamAutoplayInfo = React.useCallback((nextInfo: AutoplayInfo | null) => {
+        setInfo(autoSelect ? nextInfo : null)
+        if (!autoSelect) setNextEpisode(null)
+    }, [autoSelect, setInfo, setNextEpisode])
+
     function handleAutoplayNextTorrentstreamEpisode() {
         if (!info) return
+        if (!autoSelect) {
+            setInfo(null)
+            setNextEpisode(null)
+            return
+        }
         const { entry, episodeNumber, aniDBEpisode, allEpisodes } = info
 
         if (autoPlayTorrent?.torrent?.isBatch) {
@@ -192,11 +223,14 @@ export function useDebridstreamAutoplay() {
 
 
     return {
-        debridstreamAutoplayInfo: info?.type === "debridstream" ? info : null,
-        hasNextDebridstreamEpisode: !!info && info.type === "debridstream",
-        setDebridstreamAutoplayInfo: setInfo,
+        debridstreamAutoplayInfo: autoSelect && info?.type === "debridstream" ? info : null,
+        hasNextDebridstreamEpisode: autoSelect && !!info && info.type === "debridstream",
+        setDebridstreamAutoplayInfo,
         autoplayNextDebridstreamEpisode: handleAutoplayNextTorrentstreamEpisode,
-        resetDebridstreamAutoplayInfo: () => setInfo(null),
+        resetDebridstreamAutoplayInfo: () => {
+            setInfo(null)
+            setNextEpisode(null)
+        },
     }
 }
 

@@ -6,8 +6,7 @@ import {
     useCurrentDevicePlaybackSettings,
     useExternalPlayerLink,
 } from "@/app/(main)/_atoms/playback.atoms"
-import { useAutoPlaySelectedTorrent, useTorrentstreamAutoplay } from "@/app/(main)/_features/autoplay/autoplay"
-import { getBatchSelectionParams } from "@/app/(main)/_features/autoplay/batches.ts"
+import { useTorrentstreamAutoplay } from "@/app/(main)/_features/autoplay/autoplay"
 import { usePlaylistManager } from "@/app/(main)/_features/playlists/_containers/global-playlist-manager"
 import { useWebsocketMessageListener } from "@/app/(main)/_hooks/handle-websockets"
 import { useServerStatus } from "@/app/(main)/_hooks/use-server-status"
@@ -16,10 +15,7 @@ import {
     __torrentstream__loadingStateAtom,
     TorrentStreamEvents,
 } from "@/app/(main)/entry/_containers/torrent-stream/playback-play-pill"
-import {
-    __torrentStream_autoSelectFileAtom,
-    __torrentStream_currentSessionAutoSelectAtom,
-} from "@/app/(main)/entry/_containers/torrent-stream/torrent-stream-page"
+import { __torrentStream_currentSessionAutoSelectAtom } from "@/app/(main)/entry/_containers/torrent-stream/torrent-stream-page"
 import { ForcePlaybackMethod, useForcePlaybackMethod } from "@/app/(main)/entry/_lib/handle-play-media"
 import { clientIdAtom } from "@/app/websocket-provider"
 import { logger } from "@/lib/helpers/debug"
@@ -137,13 +133,12 @@ export function useHandleStartTorrentStream() {
 
 export function useTorrentStreamListener() {
     const serverStatus = useServerStatus()
+    const sessionAutoSelect = useAtomValue(__torrentStream_currentSessionAutoSelectAtom)
     const { currentPlaylist, nextPlaylistEpisode } = usePlaylistManager()
     const { torrentstreamAutoplayInfo, autoplayNextTorrentstreamEpisode } = useTorrentstreamAutoplay()
-    const { autoPlayTorrent } = useAutoPlaySelectedTorrent()
-    const { handleStreamSelection, handleAutoSelectStream } = useHandleStartTorrentStream()
-    const torrentStream_autoSelectFile = useAtomValue(__torrentStream_autoSelectFileAtom)
+    const { handleAutoSelectStream } = useHandleStartTorrentStream()
 
-    const torrentStream_currentSessionAutoSelect = serverStatus?.torrentstreamSettings?.autoSelect
+    const torrentStream_currentSessionAutoSelect = sessionAutoSelect ?? serverStatus?.torrentstreamSettings?.autoSelect
 
     useWebsocketMessageListener({
         type: WSEvents.TORRENTSTREAM_STATE,
@@ -153,35 +148,16 @@ export function useTorrentStreamListener() {
                     if (currentPlaylist && nextPlaylistEpisode) {
                         const episode = nextPlaylistEpisode.episode
                         if (!episode) return
-                        if (torrentStream_currentSessionAutoSelect) {
-                            logger("TORRENT STREAM LISTENER").info("Auto select is enabled, preparing next stream with auto select")
-                            handleAutoSelectStream({
-                                mediaId: episode.baseAnime?.id!,
-                                episodeNumber: episode.episodeNumber!,
-                                aniDBEpisode: episode.aniDBEpisode!,
-                                preload: true,
-                            })
-                            return
-                        } else if (
-                            autoPlayTorrent?.torrent?.isBatch &&
-                            torrentStream_autoSelectFile &&
-                            autoPlayTorrent.entry.mediaId === episode.baseAnime?.id
-                        ) {
-                            logger("TORRENT STREAM LISTENER")
-                                .info("Previous selection matches, preparing next stream by auto-selecting file for torrent stream")
-                            const batchParams = getBatchSelectionParams(autoPlayTorrent.batchFiles, episode.episodeNumber!, episode.aniDBEpisode!)
-                            handleStreamSelection({
-                                mediaId: episode.baseAnime?.id!,
-                                episodeNumber: episode.episodeNumber!,
-                                aniDBEpisode: episode.aniDBEpisode!,
-                                torrent: autoPlayTorrent.torrent,
-                                chosenFileIndex: batchParams.fileIndex,
-                                batchEpisodeFiles: batchParams.batchEpisodeFiles,
-                                preload: true,
-                            })
-                            return
-                        }
-                    } else if (torrentstreamAutoplayInfo) {
+                        if (!torrentStream_currentSessionAutoSelect) return
+                        logger("TORRENT STREAM LISTENER").info("Auto select is enabled, preparing next stream with auto select")
+                        handleAutoSelectStream({
+                            mediaId: episode.baseAnime?.id!,
+                            episodeNumber: episode.episodeNumber!,
+                            aniDBEpisode: episode.aniDBEpisode!,
+                            preload: true,
+                        })
+                        return
+                    } else if (torrentStream_currentSessionAutoSelect && torrentstreamAutoplayInfo) {
                         logger("TORRENT STREAM LISTENER").info("Preparing next stream for episode", torrentstreamAutoplayInfo)
                         autoplayNextTorrentstreamEpisode(true)
                     }

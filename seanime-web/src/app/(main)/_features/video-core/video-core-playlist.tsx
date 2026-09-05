@@ -2,12 +2,12 @@ import { Anime_Entry, Anime_Episode } from "@/api/generated/types"
 import { useGetAnimeEpisodeCollection } from "@/api/hooks/anime.hooks"
 import { useGetAnimeEntry } from "@/api/hooks/anime_entries.hooks"
 import { EpisodeGridItem } from "@/app/(main)/_features/anime/_components/episode-grid-item"
-import { useAutoPlaySelectedTorrent, useTorrentstreamAutoplay } from "@/app/(main)/_features/autoplay/autoplay"
-import { getBatchSelectionParams } from "@/app/(main)/_features/autoplay/batches.ts"
+import { useTorrentstreamAutoplay } from "@/app/(main)/_features/autoplay/autoplay"
 import { useNakamaWatchParty } from "@/app/(main)/_features/nakama/nakama-manager"
 import { usePlaylistManager } from "@/app/(main)/_features/playlists/_containers/global-playlist-manager"
 import { VideoCoreNextButton, VideoCorePreviousButton } from "@/app/(main)/_features/video-core/video-core-control-bar"
 import { VideoCore_PlaybackType, VideoCoreLifecycleState } from "@/app/(main)/_features/video-core/video-core.atoms"
+import { useServerStatus } from "@/app/(main)/_hooks/use-server-status"
 import { useHandleStartDebridStream } from "@/app/(main)/entry/_containers/debrid-stream/_lib/handle-debrid-stream"
 import {
     __debridStream_autoSelectFileAtom,
@@ -124,26 +124,24 @@ export function useVideoCorePlaylist() {
     const animeEntry = playlistState?.animeEntry
 
     const { isPeer: isWatchPartyPeer } = useNakamaWatchParty()
+    const serverStatus = useServerStatus()
 
     const setTorrentSearch = useSetAtom(__torrentSearch_selectionAtom)
     const setTorrentSearchEpisode = useSetAtom(__torrentSearch_selectionEpisodeAtom)
     const { setTorrentSearchStreamEpisode } = useTorrentSearchSelectedStreamEpisode()
-    const {
-        handleStreamSelection: handleTorrentstreamSelection,
-        handleAutoSelectStream: handleTorrentstreamAutoSelect,
-    } = useHandleStartTorrentStream()
-    const { handleStreamSelection: handleDebridstreamSelection, handleAutoSelectStream: handleDebridstreamAutoSelect } = useHandleStartDebridStream()
+    const { handleAutoSelectStream: handleTorrentstreamAutoSelect } = useHandleStartTorrentStream()
+    const { handleAutoSelectStream: handleDebridstreamAutoSelect } = useHandleStartDebridStream()
     const { playMediaFile } = useHandlePlayMedia()
 
     // If user is auto-selecting the torrent
-    const [torrentStream_currentSessionAutoSelect] = useAtom(__torrentStream_currentSessionAutoSelectAtom)
-    const [debridStream_currentSessionAutoSelect] = useAtom(__debridStream_currentSessionAutoSelectAtom)
+    const [torrentStreamSessionAutoSelect] = useAtom(__torrentStream_currentSessionAutoSelectAtom)
+    const [debridStreamSessionAutoSelect] = useAtom(__debridStream_currentSessionAutoSelectAtom)
+    const torrentStream_currentSessionAutoSelect = torrentStreamSessionAutoSelect ?? serverStatus?.torrentstreamSettings?.autoSelect
+    const debridStream_currentSessionAutoSelect = debridStreamSessionAutoSelect ?? serverStatus?.debridSettings?.streamAutoSelect
     // If user is auto-selecting the file
     const [torrentStream_autoSelectFile] = useAtom(__torrentStream_autoSelectFileAtom)
     const [debridStream_autoSelectFile] = useAtom(__debridStream_autoSelectFileAtom)
 
-    // The torrent to continue playing from
-    const { autoPlayTorrent, setAutoPlayTorrent } = useAutoPlaySelectedTorrent()
     const { setTorrentstreamAutoplayInfo } = useTorrentstreamAutoplay()
 
     // Global playlist
@@ -196,61 +194,17 @@ export function useVideoCorePlaylist() {
             }
         }
 
-        // If a torrent was selected for auto play (i.e. user manually select torrent with auto select file)
-        if (autoPlayTorrent?.torrent?.isBatch) {
-            log.info("Previous torrent selected for auto play", autoPlayTorrent)
-            const batchParams = getBatchSelectionParams(
-                autoPlayTorrent.batchFiles,
-                episode.episodeNumber,
-                episode.aniDBEpisode,
-            )
+        // With stream auto-select disabled, always ask the user to choose the result.
+        setTorrentSearchEpisode(episode.episodeNumber)
+        setTorrentSearchStreamEpisode(episode)
+        log.info("Torrent search for ", episode.episodeNumber)
+        React.startTransition(() => {
             if (playbackType === "torrent") {
-                handleTorrentstreamSelection({
-                    mediaId: playlistState.animeEntry.mediaId,
-                    episodeNumber: episode.episodeNumber,
-                    aniDBEpisode: episode.aniDBEpisode,
-                    torrent: autoPlayTorrent.torrent,
-                    chosenFileIndex: batchParams.fileIndex,
-                    batchEpisodeFiles: batchParams.batchEpisodeFiles,
-                })
-                if (batchParams.batchEpisodeFiles) {
-                    setAutoPlayTorrent(autoPlayTorrent.torrent, playlistState.animeEntry, batchParams.batchEpisodeFiles)
-                }
-                updateTorrentstreamAutoplayInfo(episode)
+                setTorrentSearch(torrentStream_autoSelectFile ? "torrentstream-select" : "torrentstream-select-file")
             } else if (playbackType === "debrid") {
-                let fileIndex: number | undefined = undefined
-                if (autoPlayTorrent?.batchFiles) {
-                    const file = autoPlayTorrent.batchFiles.files?.find(n => n.index === autoPlayTorrent.batchFiles!.current + 1)
-                    if (file) {
-                        fileIndex = file.index
-                    }
-                }
-                handleDebridstreamSelection({
-                    mediaId: playlistState.animeEntry.mediaId,
-                    episodeNumber: episode.episodeNumber,
-                    aniDBEpisode: episode.aniDBEpisode,
-                    torrent: autoPlayTorrent.torrent,
-                    chosenFileId: fileIndex !== undefined ? String(fileIndex) : "",
-                    batchEpisodeFiles: (autoPlayTorrent?.batchFiles && fileIndex !== undefined) ? {
-                        ...autoPlayTorrent.batchFiles,
-                        current: fileIndex,
-                        currentEpisodeNumber: episode.episodeNumber,
-                        currentAniDBEpisode: episode.aniDBEpisode,
-                    } : undefined,
-                })
+                setTorrentSearch(debridStream_autoSelectFile ? "debridstream-select" : "debridstream-select-file")
             }
-        } else {
-            setTorrentSearchEpisode(episode.episodeNumber)
-            setTorrentSearchStreamEpisode(episode)
-            log.info("Torrent search for ", episode.episodeNumber)
-            React.startTransition(() => {
-                if (playbackType === "torrent") {
-                    setTorrentSearch(torrentStream_autoSelectFile ? "torrentstream-select" : "torrentstream-select-file")
-                } else if (playbackType === "debrid") {
-                    setTorrentSearch(debridStream_autoSelectFile ? "debridstream-select" : "debridstream-select-file")
-                }
-            })
-        }
+        })
     }
 
     const playEpisode = (which: "previous" | "next" | string) => {

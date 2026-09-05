@@ -2,7 +2,7 @@ import { Anime_Entry, Anime_Episode } from "@/api/generated/types"
 import { useGetAnimeEpisodeCollection } from "@/api/hooks/anime.hooks"
 import { useDeleteTorrentstreamBatchHistory, useGetTorrentstreamBatchHistory } from "@/api/hooks/torrentstream.hooks"
 import { useDebridstreamAutoplay } from "@/app/(main)/_features/autoplay/autoplay"
-import { useSelectedDebridService, useServerStatus } from "@/app/(main)/_hooks/use-server-status"
+import { useServerStatus } from "@/app/(main)/_hooks/use-server-status"
 import { useHandleStartDebridStream } from "@/app/(main)/entry/_containers/debrid-stream/_lib/handle-debrid-stream"
 import { ENTRY_VIEW_TRANSITION } from "@/app/(main)/entry/_containers/entry-view-transition"
 import { useTorrentSearchSelectedStreamEpisode } from "@/app/(main)/entry/_containers/torrent-search/_lib/handle-torrent-selection"
@@ -19,7 +19,6 @@ import { IconButton } from "@/components/ui/button"
 import { Popover } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
 import { logger } from "@/lib/helpers/debug"
-import { DEBRID_SERVICE } from "@/lib/server/settings"
 import { atom } from "jotai"
 import { useAtom } from "jotai/react"
 import { atomWithStorage } from "jotai/utils"
@@ -35,7 +34,7 @@ type DebridStreamPageProps = {
 }
 
 export const __debridStream_autoSelectFileAtom = atomWithStorage("sea-debridstream-manually-select-file", false)
-export const __debridStream_currentSessionAutoSelectAtom = atom(false)
+export const __debridStream_currentSessionAutoSelectAtom = atom<boolean | undefined>(undefined)
 
 // DEVNOTE: This page uses some utility functions from the TorrentStream feature
 
@@ -73,7 +72,7 @@ export function DebridStreamPage(props: DebridStreamPageProps) {
             // Fall back to manual select if no download info (no Animap data)
             setAutoSelect(false)
         }
-    }, [serverStatus?.torrentstreamSettings?.autoSelect, episodeCollection])
+    }, [serverStatus?.debridSettings?.streamAutoSelect, episodeCollection])
 
     // Atoms to control the torrent search drawer state
     const [, setTorrentSearchDrawerOpen] = useAtom(__torrentSearch_selectionAtom)
@@ -92,42 +91,22 @@ export function DebridStreamPage(props: DebridStreamPageProps) {
     }
 
     // Hook to handle starting the debrid stream
-    const { handleAutoSelectStream, handleStreamSelection, isUsingNativePlayer } = useHandleStartDebridStream()
+    const { handleAutoSelectStream, isUsingNativePlayer } = useHandleStartDebridStream()
 
     const { forcePlaybackMethodFn } = useForcePlaybackMethod()
 
     // Hook to manage debrid stream autoplay information
     const { setDebridstreamAutoplayInfo } = useDebridstreamAutoplay()
     const { mutate: deleteBatchHistory, isPending: isDeletingBatchHistory } = useDeleteTorrentstreamBatchHistory()
-
-    const { data: batchHistory } = useGetTorrentstreamBatchHistory(entry?.mediaId, true)
-
-    const [usePreviousBatch, setUsePreviousBatch] = React.useState(false)
-
-    const { selectedDebridService } = useSelectedDebridService()
-
-    React.useEffect(() => {
-        setUsePreviousBatch(!!batchHistory?.torrent?.isBatch)
-    }, [batchHistory])
-
-    function handleDisablePreviousBatch() {
-        setUsePreviousBatch(false)
-    }
-
-    function handleDeletePreviousBatch() {
-        handleDisablePreviousBatch()
-        deleteBatchHistory({ mediaId: entry.mediaId })
-    }
+    const { data: batchHistory } = useGetTorrentstreamBatchHistory(entry.mediaId, true)
 
     const confirmPreviousBatchAction = useConfirmationDialog({
-        title: "Disable previous torrent",
-        description: "Disable using the saved previous batch for now, or delete the saved history entirely.",
+        title: "Delete previous selection?",
+        description: "Remove the saved previous batch from the stream selection list.",
         actionText: "Delete history",
-        cancelText: "Disable only",
-        onConfirm: handleDeletePreviousBatch,
-        onCancel: handleDisablePreviousBatch,
+        cancelText: "Keep",
+        onConfirm: () => deleteBatchHistory({ mediaId: entry.mediaId }),
     })
-
     // Function to set the debrid stream autoplay info
     // It checks if there is a next episode and if it has aniDBEpisode
     // If so, it sets the autoplay info
@@ -176,88 +155,11 @@ export function DebridStreamPage(props: DebridStreamPageProps) {
                 handleAutoSelect(entry, episode)
             })
         } else {
-
-            let started = false
-
-            // If we're using the previous batch
-            if (usePreviousBatch && batchHistory?.torrent && episode.aniDBEpisode) {
-                if (autoSelectFile) {
-                    forcePlaybackMethodFn(forcePlaybackMethod, () => {
-                        handleStreamSelection({
-                            mediaId: entry.mediaId,
-                            episodeNumber: episode.episodeNumber,
-                            aniDBEpisode: episode.aniDBEpisode!,
-                            torrent: batchHistory.torrent!,
-                            chosenFileId: "",
-                            batchEpisodeFiles: undefined,
-                        })
-                    })
-                    started = true
-                } else {
-                    // Only auto select the file index if the user is trying to watch the next episode
-                    if (batchHistory?.batchEpisodeFiles && selectedDebridService !== DEBRID_SERVICE.TORBOX) {
-                        let fileIndex: number | undefined = undefined
-
-                        console.log("handleEpisodeClick (batchHistory)",
-                            batchHistory?.batchEpisodeFiles,
-                            episode.aniDBEpisode,
-                            episode.episodeNumber)
-
-                        if (batchHistory?.batchEpisodeFiles.currentAniDBEpisode === episode.aniDBEpisode) {
-                            fileIndex = batchHistory.batchEpisodeFiles.current
-                        } else {
-                            // guess index based on the last selected file
-                            const offset = episode.episodeNumber - batchHistory.batchEpisodeFiles.currentEpisodeNumber
-                            const file = batchHistory.batchEpisodeFiles.files?.find(f => f.index === (batchHistory.batchEpisodeFiles?.current || 0) + offset)
-                            if (file) {
-                                fileIndex = file.index
-                                console.log("handleEpisodeClick (batchHistory) found file", file)
-                            }
-                        }
-
-                        if (fileIndex !== undefined) {
-                            forcePlaybackMethodFn(forcePlaybackMethod, () => {
-                                handleStreamSelection({
-                                    mediaId: entry.mediaId,
-                                    episodeNumber: episode.episodeNumber,
-                                    aniDBEpisode: episode.aniDBEpisode!,
-                                    torrent: batchHistory.torrent!,
-                                    chosenFileId: String(fileIndex),
-                                    batchEpisodeFiles: (batchHistory.batchEpisodeFiles) ? {
-                                        ...batchHistory.batchEpisodeFiles!,
-                                        files: batchHistory.batchEpisodeFiles!.files!,
-                                        current: fileIndex!,
-                                        currentAniDBEpisode: episode.aniDBEpisode!,
-                                        currentEpisodeNumber: episode.episodeNumber,
-                                    } : undefined,
-                                })
-                            })
-                            started = true
-                        }
-                    }
-                }
-            }
-
-            if (!started) {
-                setTorrentSearchEpisode(episode.episodeNumber)
-                forcePlaybackMethodFn(forcePlaybackMethod, () => {
-                    // If auto-select file is enabled, open the debrid stream select drawer
-                    if (autoSelectFile) {
-                        setTorrentSearchDrawerOpen("debridstream-select")
-                        // Set the debrid stream autoplay info
-                        handleSetDebridstreamAutoplayInfo(episode)
-                    } else {
-                        // Otherwise, open the debrid stream select file drawer
-                        setTorrentSearchDrawerOpen("debridstream-select-file")
-
-                    }
-                })
-            }
-
-            if (selectedDebridService !== DEBRID_SERVICE.TORBOX) {
-                // Set the debrid stream autoplay info
-                handleSetDebridstreamAutoplayInfo(episode)
-            }
+            setTorrentSearchEpisode(episode.episodeNumber)
+            forcePlaybackMethodFn(forcePlaybackMethod, () => {
+                // The stream list is always shown when stream auto-select is off.
+                setTorrentSearchDrawerOpen(autoSelectFile ? "debridstream-select" : "debridstream-select-file")
+            })
         }
     }
 
@@ -292,7 +194,7 @@ export function DebridStreamPage(props: DebridStreamPageProps) {
                             fieldClass="w-fit flex-none"
                         />
 
-                        {!autoSelect && !usePreviousBatch && (
+                        {!autoSelect && (
                             <Switch
                                 label="Auto-select file"
                                 value={autoSelectFile}
@@ -301,11 +203,10 @@ export function DebridStreamPage(props: DebridStreamPageProps) {
                                 }}
                                 moreHelp="The episode file will be automatically selected from your chosen batch torrent"
                                 fieldClass="w-fit flex-none"
-                                disabled={!autoSelect && usePreviousBatch}
                             />
                         )}
 
-                        {(!autoSelect && usePreviousBatch && batchHistory) && (
+                        {!autoSelect && batchHistory?.torrent?.isBatch && (
                             <div className="relative w-full xl:max-w-[20rem] group/torrent-stream-batch-history">
                                 <div className="rounded-full max-w-[20rem]">
                                     <div className="flex items-center gap-2">
@@ -320,23 +221,21 @@ export function DebridStreamPage(props: DebridStreamPageProps) {
                                             />
                                         </div>
                                         <div className="flex-1 flex items-center gap-2">
-                                            <div className="flex items-center flex-none gap-1">Auto-selecting from previous torrent
+                                            <div className="flex items-center flex-none gap-1">Saved previous selection
                                                 <Popover
                                                     className="text-sm"
                                                     trigger={
                                                         <AiOutlineExclamationCircle className="transition-opacity opacity-45 hover:opacity-90 cursor-pointer" />}
                                                 >
-                                                    {batchHistory.torrent?.name}
+                                                    Available as an explicit choice in the stream list: {batchHistory.torrent?.name}
                                                 </Popover>
                                             </div>
-                                            <p className="line-clamp-1 text-[--muted] text-xs tracking-wide w-0 transition-all duration-300 ease-in-out group-hover/torrent-stream-batch-history:w-[20rem]">
-
-                                            </p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         )}
+
                     </div>
 
                     {episodeCollection?.hasMappingError && (

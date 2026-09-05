@@ -1,8 +1,7 @@
 import { Anime_Entry, Anime_Episode } from "@/api/generated/types"
 import { useGetAnimeEpisodeCollection } from "@/api/hooks/anime.hooks"
 import { useDeleteTorrentstreamBatchHistory, useGetTorrentstreamBatchHistory } from "@/api/hooks/torrentstream.hooks"
-import { useAutoPlaySelectedTorrent, useTorrentstreamAutoplay } from "@/app/(main)/_features/autoplay/autoplay"
-import { getBatchSelectionParams } from "@/app/(main)/_features/autoplay/batches.ts"
+import { useTorrentstreamAutoplay } from "@/app/(main)/_features/autoplay/autoplay"
 
 import { useSeaCommandInject } from "@/app/(main)/_features/sea-command/use-inject"
 import { useServerStatus } from "@/app/(main)/_hooks/use-server-status"
@@ -37,7 +36,7 @@ type TorrentStreamPageProps = {
 }
 
 export const __torrentStream_autoSelectFileAtom = atomWithStorage("sea-torrentstream-auto-select-file", true)
-export const __torrentStream_currentSessionAutoSelectAtom = atom(false)
+export const __torrentStream_currentSessionAutoSelectAtom = atom<boolean | undefined>(undefined)
 
 export function TorrentStreamPage(props: TorrentStreamPageProps) {
 
@@ -79,39 +78,20 @@ export function TorrentStreamPage(props: TorrentStreamPageProps) {
     /**
      * Handle auto-select
      */
-    const { handleAutoSelectStream, handleStreamSelection, isPending, isUsingNativePlayer } = useHandleStartTorrentStream()
+    const { handleAutoSelectStream, isPending, isUsingNativePlayer } = useHandleStartTorrentStream()
     const { setTorrentstreamAutoplayInfo } = useTorrentstreamAutoplay()
     const { mutate: deleteBatchHistory, isPending: isDeletingBatchHistory } = useDeleteTorrentstreamBatchHistory()
-
-    const { setAutoPlayTorrent } = useAutoPlaySelectedTorrent()
-
-    const { forcePlaybackMethodFn } = useForcePlaybackMethod()
-
-    const { data: batchHistory } = useGetTorrentstreamBatchHistory(entry?.mediaId, true)
-
-    const [usePreviousBatch, setUsePreviousBatch] = React.useState(false)
-
-    React.useEffect(() => {
-        setUsePreviousBatch(!!batchHistory?.torrent?.isBatch)
-    }, [batchHistory])
-
-    function handleDisablePreviousBatch() {
-        setUsePreviousBatch(false)
-    }
-
-    function handleDeletePreviousBatch() {
-        handleDisablePreviousBatch()
-        deleteBatchHistory({ mediaId: entry.mediaId })
-    }
+    const { data: batchHistory } = useGetTorrentstreamBatchHistory(entry.mediaId, true)
 
     const confirmPreviousBatchAction = useConfirmationDialog({
-        title: "Disable previous torrent",
-        description: "Disable using the saved previous batch for now, or delete the saved history entirely.",
+        title: "Delete previous selection?",
+        description: "Remove the saved previous batch from the stream selection list.",
         actionText: "Delete history",
-        cancelText: "Disable only",
-        onConfirm: handleDeletePreviousBatch,
-        onCancel: handleDisablePreviousBatch,
+        cancelText: "Keep",
+        onConfirm: () => deleteBatchHistory({ mediaId: entry.mediaId }),
     })
+
+    const { forcePlaybackMethodFn } = useForcePlaybackMethod()
 
     // Function to set the torrent stream autoplay info
     // It checks if there is a next episode and if it has aniDBEpisode
@@ -160,89 +140,32 @@ export function TorrentStreamPage(props: TorrentStreamPageProps) {
      * - If auto-select is enabled, send the streaming request
      * - If auto-select is disabled, open the torrent drawer
      */
-        // const setTorrentStreamLoader = useSetTorrentStreamLoader()
+    // const setTorrentStreamLoader = useSetTorrentStreamLoader()
     const handleEpisodeClick = (episode: Anime_Episode, forcePlaybackMethod?: ForcePlaybackMethod) => {
-            if (isPending) return
+        if (isPending) return
 
-            console.log("handleEpisodeClick", episode, forcePlaybackMethod)
+        console.log("handleEpisodeClick", episode, forcePlaybackMethod)
 
-            setTorrentSearchStreamEpisode(episode)
+        setTorrentSearchStreamEpisode(episode)
 
-            React.startTransition(() => {
-                // If auto-select is enabled, send the streaming request
-                if (autoSelect) {
-                    forcePlaybackMethodFn(forcePlaybackMethod, () => {
-                        handleAutoSelect(entry, episode)
-                    })
-                } else {
-
-                    let started = false
-
-                    // If we're using the previous batch
-                    if (usePreviousBatch && batchHistory?.torrent && episode.aniDBEpisode) {
-
-                        // Store the batch for auto play
-                        setAutoPlayTorrent(batchHistory?.torrent, entry, batchHistory.batchEpisodeFiles)
-
-                        if (autoSelectFile) {
-                            forcePlaybackMethodFn(forcePlaybackMethod, () => {
-                                handleStreamSelection({
-                                    mediaId: entry.mediaId,
-                                    episodeNumber: episode.episodeNumber,
-                                    aniDBEpisode: episode.aniDBEpisode!,
-                                    torrent: batchHistory.torrent!,
-                                    chosenFileIndex: undefined,
-                                    batchEpisodeFiles: undefined,
-                                })
-                            })
-                            started = true
-                        } else {
-                            // Reuse the previous batch when the requested episode can be matched safely.
-                            if (batchHistory?.batchEpisodeFiles) {
-                                console.log("handleEpisodeClick (batchHistory)",
-                                    batchHistory?.batchEpisodeFiles,
-                                    episode.aniDBEpisode,
-                                    episode.episodeNumber)
-
-                                const batchParams = getBatchSelectionParams(batchHistory.batchEpisodeFiles,
-                                    episode.episodeNumber,
-                                    episode.aniDBEpisode)
-
-                                if (batchParams.fileIndex !== undefined) {
-                                    forcePlaybackMethodFn(forcePlaybackMethod, () => {
-                                        handleStreamSelection({
-                                            mediaId: entry.mediaId,
-                                            episodeNumber: episode.episodeNumber,
-                                            aniDBEpisode: episode.aniDBEpisode!,
-                                            torrent: batchHistory.torrent!,
-                                            chosenFileIndex: batchParams.fileIndex,
-                                            batchEpisodeFiles: batchParams.batchEpisodeFiles,
-                                        })
-                                    })
-                                    started = true
-                                }
-                            }
-                        }
-                    }
-
-                    if (!started) {
-                        setTorrentSearchEpisode(episode.episodeNumber)
-                        forcePlaybackMethodFn(forcePlaybackMethod, () => {
-                            // If auto-select file is enabled, open the torrent drawer
-                            if (autoSelectFile) {
-                                setTorrentSearchSelection("torrentstream-select")
-                            } else { // Otherwise, open the torrent drawer
-                                setTorrentSearchSelection("torrentstream-select-file")
-                            }
-                        })
-                    }
-                    // Set the torrent stream autoplay info
-                    handleSetTorrentstreamAutoplayInfo(episode)
-
-                }
-            })
-            // toast.info("Starting torrent stream...")
-        }
+        React.startTransition(() => {
+            // If auto-select is enabled, send the streaming request.
+            if (autoSelect) {
+                forcePlaybackMethodFn(forcePlaybackMethod, () => {
+                    handleAutoSelect(entry, episode)
+                })
+            } else {
+                setTorrentSearchEpisode(episode.episodeNumber)
+                forcePlaybackMethodFn(forcePlaybackMethod, () => {
+                    // The stream list is always shown when stream auto-select is off.
+                    setTorrentSearchSelection(autoSelectFile ? "torrentstream-select" : "torrentstream-select-file")
+                })
+                // Keep any autoplay state from being reused while auto-select is off.
+                handleSetTorrentstreamAutoplayInfo(episode)
+            }
+        })
+        // toast.info("Starting torrent stream...")
+    }
 
     const { inject, remove } = useSeaCommandInject()
 
@@ -300,7 +223,7 @@ export function TorrentStreamPage(props: TorrentStreamPageProps) {
                     >
                         <Switch
                             label="Auto-select"
-                            value={autoSelect}
+                            value={!!autoSelect}
                             onValueChange={v => {
                                 setAutoSelect(v)
                             }}
@@ -308,7 +231,7 @@ export function TorrentStreamPage(props: TorrentStreamPageProps) {
                             fieldClass="w-fit flex-none"
                         />
 
-                        {!autoSelect && !usePreviousBatch && (
+                        {!autoSelect && (
                             <Switch
                                 label="Auto-select file"
                                 value={autoSelectFile}
@@ -317,11 +240,10 @@ export function TorrentStreamPage(props: TorrentStreamPageProps) {
                                 }}
                                 moreHelp="The episode file will be automatically selected from your chosen batch torrent"
                                 fieldClass="w-fit flex-none"
-                                disabled={!autoSelect && usePreviousBatch}
                             />
                         )}
 
-                        {(!autoSelect && usePreviousBatch && batchHistory) && (
+                        {!autoSelect && batchHistory?.torrent?.isBatch && (
                             <div className="relative w-full xl:max-w-[20rem] group/torrent-stream-batch-history">
                                 <div className="rounded-full max-w-[20rem]">
                                     <div className="flex items-center gap-2">
@@ -336,23 +258,21 @@ export function TorrentStreamPage(props: TorrentStreamPageProps) {
                                             />
                                         </div>
                                         <div className="flex-1 flex items-center gap-2">
-                                            <div className="flex items-center flex-none gap-1">Auto-selecting from previous torrent
+                                            <div className="flex items-center flex-none gap-1">Saved previous selection
                                                 <Popover
                                                     className="text-sm"
                                                     trigger={
                                                         <AiOutlineExclamationCircle className="transition-opacity opacity-45 hover:opacity-90 cursor-pointer" />}
                                                 >
-                                                    {batchHistory.torrent?.name}
+                                                    Available as an explicit choice in the stream list: {batchHistory.torrent?.name}
                                                 </Popover>
                                             </div>
-                                            <p className="line-clamp-1 text-[--muted] text-xs tracking-wide w-0 transition-all duration-300 ease-in-out group-hover/torrent-stream-batch-history:w-[20rem]">
-
-                                            </p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         )}
+
                     </div>
 
                     {episodeCollection?.hasMappingError && (
