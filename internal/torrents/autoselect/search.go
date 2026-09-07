@@ -46,6 +46,12 @@ func (s *AutoSelect) searchWithProviderOrder(ctx context.Context, media *anilist
 	if len(providers) == 0 {
 		return nil, fmt.Errorf("no providers available")
 	}
+	if preserveProviderOrder {
+		// In Torrent Streaming, AioStreams is the source of truth. If it is
+		// selected anywhere in the profile, exclude every other provider so
+		// their results cannot be merged into or reorder the AioStreams list.
+		providers = []string{itorrent.AIOStreamsProviderID}
+	}
 
 	s.logger.Debug().Strs("providers", providers).Msg("autoselect: Using providers")
 	s.log(fmt.Sprintf("Searching with providers: %v", providers))

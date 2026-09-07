@@ -496,6 +496,36 @@ func TestSearchWithProviderOrderUsesEpisodeSearchOrder(t *testing.T) {
 	assert.False(t, provider.LastBatchSetting)
 }
 
+func TestSearchWithProviderOrderUsesOnlyAIOStreamsWhenProfileIncludesOtherProviders(t *testing.T) {
+	media := createTestMedia(t)
+	provider := &TestSearchProvider{
+		SearchResults: map[string][]*hibiketorrent.AnimeTorrent{
+			"1080p": {
+				{Name: "first", InfoHash: "first", Seeders: 1},
+				{Name: "second", InfoHash: "second", Seeders: 999},
+			},
+		},
+		CanSmartSearch: true,
+	}
+	autoSelect := setupTestAutoSelectWithID(t, itorrent.AIOStreamsProviderID, provider)
+
+	profile := &anime.AutoSelectProfile{
+		Providers:   []string{"another-provider", itorrent.AIOStreamsProviderID},
+		Resolutions: []string{"1080p"},
+	}
+	torrents, err := autoSelect.searchWithProviderOrder(
+		context.Background(),
+		media,
+		1000,
+		profile,
+		true,
+	)
+
+	require.NoError(t, err)
+	require.Len(t, torrents, 2)
+	assert.Equal(t, []string{"first", "second"}, []string{torrents[0].InfoHash, torrents[1].InfoHash})
+}
+
 func TestShouldSearchBatch(t *testing.T) {
 	logger := zerolog.Nop()
 	autoSelect := New(&NewAutoSelectOptions{

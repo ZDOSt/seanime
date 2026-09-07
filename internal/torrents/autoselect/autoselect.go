@@ -236,7 +236,12 @@ func (s *AutoSelect) FindBestTorrent(
 
 func (s *AutoSelect) usesAIOStreamsProvider(profile *anime.AutoSelectProfile) bool {
 	providers := s.getProvidersToSearch(profile)
-	return len(providers) == 1 && providers[0] == itorrent.AIOStreamsProviderID
+	for _, provider := range providers {
+		if provider == itorrent.AIOStreamsProviderID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *AutoSelect) log(msg string) {

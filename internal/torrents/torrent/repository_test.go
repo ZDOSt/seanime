@@ -202,6 +202,39 @@ func TestSearchAnimeDoesNotResortAIOStreamsHookResults(t *testing.T) {
 	})
 }
 
+func TestSearchAnimeUsesOnlyAIOStreamsWhenMixedProviderRequested(t *testing.T) {
+	metadataCache.Clear()
+	otherProvider := newStubAnimeProvider(hibiketorrent.AnimeProviderSettings{Type: hibiketorrent.AnimeProviderTypeMain, CanSmartSearch: true})
+	otherProvider.smartResults = []*hibiketorrent.AnimeTorrent{{
+		Name:     "[Other] Example Show - 01 (1080p).mkv",
+		InfoHash: "other",
+		Seeders:  9999,
+	}}
+	aiostreamsProvider := newStubAnimeProvider(hibiketorrent.AnimeProviderSettings{Type: hibiketorrent.AnimeProviderTypeSpecial, CanSmartSearch: true})
+	aiostreamsProvider.smartResults = []*hibiketorrent.AnimeTorrent{
+		{Name: "[AIOStreams] First result - 01 (1080p).mkv", InfoHash: "first", Seeders: 1},
+		{Name: "[AIOStreams] Second result - 01 (1080p).mkv", InfoHash: "second", Seeders: 999},
+	}
+
+	repo := newTorrentRepositoryForTests(map[string]*stubAnimeProvider{
+		"other-provider":     otherProvider,
+		AIOStreamsProviderID: aiostreamsProvider,
+	}, testmocks.NewFakeMetadataProviderBuilder().Build())
+	media := testmocks.NewBaseAnimeBuilder(104, "Example Show").WithEpisodes(12).Build()
+
+	result, err := repo.SearchAnime(context.Background(), AnimeSearchOptions{
+		Provider:      "other-provider," + AIOStreamsProviderID,
+		Type:          AnimeSearchTypeSmart,
+		Media:         media,
+		EpisodeNumber: 1,
+		SkipPreviews:  true,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"first", "second"}, []string{result.Torrents[0].InfoHash, result.Torrents[1].InfoHash})
+	require.Equal(t, 0, otherProvider.smartCallsCount())
+}
+
 func TestSearchAnimeUsesRequestedHookOverride(t *testing.T) {
 	metadataCache.Clear()
 	hm := useTestHookManager(t)

@@ -109,12 +109,12 @@ export function useHandleTorrentSearch(props: TorrentSearchHookProps) {
 
     const searchProvider = React.useMemo(() => {
         if (!selectedProviderExtension?.id) return ""
+        if (selectedProviderExtension.id === AIOSTREAMS_PROVIDER_ID) return AIOSTREAMS_PROVIDER_ID
         if (!searchAcrossProviders) return selectedProviderExtension.id
         return [selectedProviderExtension.id, ...activeExtraProviderIds].join(",")
     }, [activeExtraProviderIds, searchAcrossProviders, selectedProviderExtension?.id])
 
     const preserveProviderOrder = selectedProviderExtensionId === AIOSTREAMS_PROVIDER_ID
-        && (!searchAcrossProviders || activeExtraProviderIds.length === 0)
 
     const warnings = {
         noProvider: !selectedProviderExtension,

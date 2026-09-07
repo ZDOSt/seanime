@@ -497,6 +497,15 @@ func (r *Repository) getAnimeSearchProviders(provider string) ([]extension.Anime
 		return nil, "", fmt.Errorf("torrent provider not found")
 	}
 
+	// AioStreams supplies an intentionally ranked result list. When it is
+	// requested alongside other providers, keep only AioStreams so Seanime
+	// cannot merge or reorder another provider's results into that list.
+	for _, ext := range providers {
+		if ext.GetID() == AIOStreamsProviderID {
+			return []extension.AnimeTorrentProviderExtension{ext}, ext.GetID(), nil
+		}
+	}
+
 	return providers, strings.Join(resolvedIDs, ","), nil
 }
 
