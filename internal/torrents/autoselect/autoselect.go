@@ -196,7 +196,11 @@ func (s *AutoSelect) FindBestTorrent(
 
 	// 1. Search
 	s.log("Searching for torrents")
-	torrents, err := s.search(ctx, media, episodeNumber, profile)
+	// AioStreams applies its own ranking before Seanime receives the results.
+	// Torrent Streaming keeps that order intact; Debrid keeps the normal
+	// search behavior because it has a separate cache/provider path.
+	preserveProviderOrder := mode == SelectionModeTorrent && s.usesAIOStreamsProvider(profile)
+	torrents, err := s.searchWithProviderOrder(ctx, media, episodeNumber, profile, preserveProviderOrder)
 	if err != nil {
 		s.log(fmt.Sprintf("Search failed: %v", err))
 		return nil, err
@@ -228,6 +232,11 @@ func (s *AutoSelect) FindBestTorrent(
 	}
 
 	return res, nil
+}
+
+func (s *AutoSelect) usesAIOStreamsProvider(profile *anime.AutoSelectProfile) bool {
+	providers := s.getProvidersToSearch(profile)
+	return len(providers) == 1 && providers[0] == itorrent.AIOStreamsProviderID
 }
 
 func (s *AutoSelect) log(msg string) {

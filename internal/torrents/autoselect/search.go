@@ -22,7 +22,7 @@ func (s *AutoSelect) Search(ctx context.Context, media *anilist.BaseAnime, episo
 	if media == nil {
 		return nil, fmt.Errorf("media cannot be nil")
 	}
-	return s.search(ctx, media.ToCompleteAnime(), episodeNumber, profile)
+	return s.searchWithProviderOrder(ctx, media.ToCompleteAnime(), episodeNumber, profile, false)
 }
 
 func (s *AutoSelect) SearchFresh(ctx context.Context, media *anilist.BaseAnime, episodeNumber int, profile *anime.AutoSelectProfile) ([]*hibiketorrent.AnimeTorrent, error) {
@@ -34,6 +34,10 @@ func (s *AutoSelect) SearchFresh(ctx context.Context, media *anilist.BaseAnime, 
 }
 
 func (s *AutoSelect) search(ctx context.Context, media *anilist.CompleteAnime, episodeNumber int, profile *anime.AutoSelectProfile) ([]*hibiketorrent.AnimeTorrent, error) {
+	return s.searchWithProviderOrder(ctx, media, episodeNumber, profile, false)
+}
+
+func (s *AutoSelect) searchWithProviderOrder(ctx context.Context, media *anilist.CompleteAnime, episodeNumber int, profile *anime.AutoSelectProfile, preserveProviderOrder bool) ([]*hibiketorrent.AnimeTorrent, error) {
 	s.log("Starting auto-select search")
 	s.logger.Debug().Msgf("autoselect: Searching for episode %d of %s", episodeNumber, media.GetTitleSafe())
 
@@ -48,9 +52,15 @@ func (s *AutoSelect) search(ctx context.Context, media *anilist.CompleteAnime, e
 
 	// 2. Determine initial batch search capability
 	shouldSearchBatch := s.shouldSearchBatch(media)
+	if preserveProviderOrder {
+		// Plugin mode asks AioStreams for the selected episode directly. A
+		// batch-first search would merge a different result set and change the
+		// provider's order before Torrent Streaming sees it.
+		shouldSearchBatch = false
+	}
 
 	// 3. Search concurrently from all providers
-	allTorrents, err := s.searchFromProviders(ctx, providers, media, episodeNumber, shouldSearchBatch, profile)
+	allTorrents, err := s.searchFromProvidersWithProviderOrder(ctx, providers, media, episodeNumber, shouldSearchBatch, profile, preserveProviderOrder)
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +107,18 @@ func (s *AutoSelect) searchFromProviders(
 	shouldSearchBatch bool,
 	profile *anime.AutoSelectProfile,
 ) ([]*hibiketorrent.AnimeTorrent, error) {
+	return s.searchFromProvidersWithProviderOrder(ctx, providers, media, episodeNumber, shouldSearchBatch, profile, false)
+}
+
+func (s *AutoSelect) searchFromProvidersWithProviderOrder(
+	ctx context.Context,
+	providers []string,
+	media *anilist.CompleteAnime,
+	episodeNumber int,
+	shouldSearchBatch bool,
+	profile *anime.AutoSelectProfile,
+	preserveProviderOrder bool,
+) ([]*hibiketorrent.AnimeTorrent, error) {
 
 	type providerResult struct {
 		torrents []*hibiketorrent.AnimeTorrent
@@ -112,7 +134,7 @@ func (s *AutoSelect) searchFromProviders(
 		go func(providerID string) {
 			defer wg.Done()
 
-			torrents, err := s.searchFromProvider(ctx, providerID, media, episodeNumber, shouldSearchBatch, profile)
+			torrents, err := s.searchFromProviderWithProviderOrder(ctx, providerID, media, episodeNumber, shouldSearchBatch, profile, preserveProviderOrder)
 			results <- providerResult{
 				torrents: torrents,
 				err:      err,
@@ -162,6 +184,18 @@ func (s *AutoSelect) searchFromProvider(
 	shouldSearchBatch bool,
 	profile *anime.AutoSelectProfile,
 ) ([]*hibiketorrent.AnimeTorrent, error) {
+	return s.searchFromProviderWithProviderOrder(ctx, provider, media, episodeNumber, shouldSearchBatch, profile, false)
+}
+
+func (s *AutoSelect) searchFromProviderWithProviderOrder(
+	ctx context.Context,
+	provider string,
+	media *anilist.CompleteAnime,
+	episodeNumber int,
+	shouldSearchBatch bool,
+	profile *anime.AutoSelectProfile,
+	preserveProviderOrder bool,
+) ([]*hibiketorrent.AnimeTorrent, error) {
 
 	s.logger.Debug().Str("provider", provider).Msg("autoselect: Searching from provider")
 
@@ -184,6 +218,19 @@ func (s *AutoSelect) searchFromProvider(
 		searchOptions, err := s.buildSearchOptions(provider, media, episodeNumber, shouldSearchBatch, resolution)
 		if err != nil {
 			s.logger.Warn().Err(err).Str("provider", provider).Msg("autoselect: Failed to build search options")
+			continue
+		}
+
+		if preserveProviderOrder {
+			searchOptions.Batch = false
+			data, err := s.searchAnime(ctx, searchOptions)
+			if err != nil {
+				lastSearchErr = err
+				continue
+			}
+			if data != nil && len(data.Torrents) > 0 {
+				return data.Torrents, nil
+			}
 			continue
 		}
 

@@ -459,6 +459,39 @@ func TestSearch_Integration(t *testing.T) {
 	assert.Equal(t, "hash1", torrents[0].InfoHash)
 }
 
+func TestSearchWithProviderOrderUsesEpisodeSearchOrder(t *testing.T) {
+	media := createTestMedia(t)
+	provider := &TestSearchProvider{
+		SearchResults: map[string][]*hibiketorrent.AnimeTorrent{
+			"1080p": {
+				{Name: "first", InfoHash: "first", Seeders: 1},
+				{Name: "second", InfoHash: "second", Seeders: 999},
+			},
+		},
+		CanSmartSearch: true,
+	}
+	autoSelect := setupTestAutoSelect(t, provider)
+
+	profile := &anime.AutoSelectProfile{
+		Providers:   []string{"fake-provider"},
+		Resolutions: []string{"1080p"},
+	}
+	torrents, err := autoSelect.searchFromProviderWithProviderOrder(
+		context.Background(),
+		"fake-provider",
+		media,
+		1000,
+		true,
+		profile,
+		true,
+	)
+
+	require.NoError(t, err)
+	require.Len(t, torrents, 2)
+	assert.Equal(t, []string{"first", "second"}, []string{torrents[0].InfoHash, torrents[1].InfoHash})
+	assert.False(t, provider.LastBatchSetting)
+}
+
 func TestShouldSearchBatch(t *testing.T) {
 	logger := zerolog.Nop()
 	autoSelect := New(&NewAutoSelectOptions{
