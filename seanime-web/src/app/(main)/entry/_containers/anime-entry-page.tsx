@@ -196,7 +196,7 @@ export function AnimeEntryPage() {
 
             if (!nextView) {
                 const defaultSource = serverStatus?.settings?.library?.defaultPlaybackSource || ""
-                const preferInstalledPlugin = !animeEntry?.libraryData && (!defaultSource || defaultSource === "library")
+                const preferInstalledPlugin = !defaultSource || defaultSource === "library"
                 const installedPluginTab = pluginEpisodeTabs.tabs[0]
                 if (preferInstalledPlugin && installedPluginTab) {
                     nextView = installedPluginTab.viewId
