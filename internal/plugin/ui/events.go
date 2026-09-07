@@ -107,6 +107,7 @@ type ClientAnimeEntryEpisodeTabSelectEpisodeEventPayload struct {
 	EpisodeNumber int         `json:"episodeNumber"`
 	AniDbEpisode  string      `json:"aniDbEpisode,omitempty"`
 	Episode       interface{} `json:"episode,omitempty"`
+	RequestID     string      `json:"requestId,omitempty"`
 }
 
 type ClientAnimeEntryEpisodeTabStateChangedEventPayload struct {

@@ -81,6 +81,7 @@ type (
 		ID       string
 		Platform string
 		Conn     *websocket.Conn
+		writeMu  sync.Mutex
 	}
 
 	WSEvent struct {
@@ -93,6 +94,24 @@ type (
 		expiresAt time.Time
 	}
 )
+
+func (c *WSConn) writeJSON(value interface{}) error {
+	if c == nil || c.Conn == nil {
+		return nil
+	}
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	return c.Conn.WriteJSON(value)
+}
+
+func (c *WSConn) writeMessage(messageType int, data []byte) error {
+	if c == nil || c.Conn == nil {
+		return nil
+	}
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	return c.Conn.WriteMessage(messageType, data)
+}
 
 const pendingTargetedEventTTL = 2 * time.Minute
 
@@ -169,11 +188,12 @@ func (m *WSEventManager) AddConn(id string, conn *websocket.Conn, platform ...st
 		m.pendingTargetedEvents = make(map[string]pendingWSEvent)
 	}
 	m.hasHadConnection = true
-	m.Conns = append(m.Conns, &WSConn{
+	wsConn := &WSConn{
 		ID:       id,
 		Platform: clientPlatform,
 		Conn:     conn,
-	})
+	}
+	m.Conns = append(m.Conns, wsConn)
 	pending, hasPending := m.pendingTargetedEvents[id]
 	if hasPending {
 		delete(m.pendingTargetedEvents, id)
@@ -181,7 +201,7 @@ func (m *WSEventManager) AddConn(id string, conn *websocket.Conn, platform ...st
 	m.mu.Unlock()
 
 	if hasPending && time.Now().Before(pending.expiresAt) && conn != nil {
-		if err := conn.WriteJSON(pending.event); err != nil {
+		if err := wsConn.writeJSON(pending.event); err != nil {
 			m.mu.Lock()
 			m.pendingTargetedEvents[id] = pending
 			m.mu.Unlock()
@@ -219,7 +239,7 @@ func (m *WSEventManager) SendEvent(t string, payload interface{}) {
 		if conn == nil || conn.Conn == nil {
 			continue
 		}
-		err := conn.Conn.WriteJSON(WSEvent{
+		err := conn.writeJSON(WSEvent{
 			Type:    t,
 			Payload: payload,
 		})
@@ -280,7 +300,7 @@ func (m *WSEventManager) SendEventTo(clientId string, t string, payload interfac
 					m.Logger.Trace().Str("to", clientId).Str("type", t).Str("payload", truncated).Msg("ws: Sending message")
 				}
 			}
-			if err := conn.Conn.WriteJSON(WSEvent{
+			if err := conn.writeJSON(WSEvent{
 				Type:    t,
 				Payload: payload,
 			}); err == nil {
@@ -311,7 +331,7 @@ func (m *WSEventManager) SendStringTo(clientId string, s string) {
 
 	for _, conn := range m.Conns {
 		if conn != nil && conn.ID == clientId && conn.Conn != nil {
-			_ = conn.Conn.WriteMessage(websocket.TextMessage, []byte(s))
+			_ = conn.writeMessage(websocket.TextMessage, []byte(s))
 		}
 	}
 }

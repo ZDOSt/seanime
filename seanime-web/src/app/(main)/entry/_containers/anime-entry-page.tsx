@@ -171,6 +171,14 @@ export function AnimeEntryPage() {
 
             if (switchedView.current) return
 
+            // Wait for registered episode-tab plugins to render their tabs
+            // before choosing the initial view. This lets an installed link
+            // source become the default instead of briefly selecting local
+            // or built-in streaming first.
+            if (registeredEpisodeTabExtensionsFetched &&
+                registeredEpisodeTabExtensions?.length &&
+                pluginEpisodeTabs.tabs.length === 0) return
+
             const automaticView = getAutomaticAnimeEntryView(animeEntry, serverStatus)
             let nextView = ""
 
@@ -188,14 +196,20 @@ export function AnimeEntryPage() {
 
             if (!nextView) {
                 const defaultSource = serverStatus?.settings?.library?.defaultPlaybackSource || ""
-                const pluginId = getPluginSourceId(defaultSource)
-                if (pluginId) {
-                    if (!registeredEpisodeTabExtensions && !registeredEpisodeTabExtensionsFetched) return
-                    if (registeredEpisodeTabExtensionIds.has(pluginId)) {
-                        nextView = getPluginEpisodeTabViewId(pluginId)
+                const preferInstalledPlugin = !animeEntry?.libraryData && (!defaultSource || defaultSource === "library")
+                const installedPluginTab = pluginEpisodeTabs.tabs[0]
+                if (preferInstalledPlugin && installedPluginTab) {
+                    nextView = installedPluginTab.viewId
+                } else {
+                    const pluginId = getPluginSourceId(defaultSource)
+                    if (pluginId) {
+                        if (!registeredEpisodeTabExtensions && !registeredEpisodeTabExtensionsFetched) return
+                        if (registeredEpisodeTabExtensionIds.has(pluginId)) {
+                            nextView = getPluginEpisodeTabViewId(pluginId)
+                        }
+                    } else if (defaultSource && isBuiltInAnimeEntryViewAvailable(defaultSource, serverStatus)) {
+                        nextView = defaultSource
                     }
-                } else if (defaultSource && isBuiltInAnimeEntryViewAvailable(defaultSource, serverStatus)) {
-                    nextView = defaultSource
                 }
             }
 
@@ -208,7 +222,7 @@ export function AnimeEntryPage() {
 
         },
         [animeEntry, animeEntryLoading, mediaId, serverStatus, tab, registeredEpisodeTabExtensions, registeredEpisodeTabExtensionsFetched,
-            registeredEpisodeTabExtensionIds])
+            registeredEpisodeTabExtensionIds, pluginEpisodeTabs.tabs])
 
     React.useEffect(() => {
             if (!currentView.startsWith("episodeTab:")) return

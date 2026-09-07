@@ -21,6 +21,7 @@ import { Tooltip } from "@/components/ui/tooltip"
 import { TORRENT_PROVIDER } from "@/lib/server/settings"
 import { useThemeSettings } from "@/lib/theme/theme-hooks"
 import { useAtom, useSetAtom } from "jotai/react"
+import { atomWithStorage } from "jotai/utils"
 import React from "react"
 import { BiCollection, BiDotsVerticalRounded, BiFolder } from "react-icons/bi"
 import { HiExclamation } from "react-icons/hi"
@@ -42,6 +43,8 @@ export type HomeToolbarProps = {
     isNakamaLibrary: boolean
     className?: string
 }
+
+const missingExtensionsDismissedAtom = atomWithStorage("sea-home-missing-extensions-dismissed", false, undefined, { getOnInit: true })
 
 export function HomeToolbar(props: HomeToolbarProps) {
 
@@ -70,6 +73,7 @@ export function HomeToolbar(props: HomeToolbarProps) {
     const { setModalOpen } = usePlaylistEditorManager()
 
     const { data: allExtensions, isLoading: isExtensionsLoading } = useGetAllExtensions(false)
+    const [missingExtensionsDismissed, setMissingExtensionsDismissed] = useAtom(missingExtensionsDismissedAtom)
 
     const [homeView, setHomeView] = useAtom(__home_currentView)
 
@@ -90,8 +94,10 @@ export function HomeToolbar(props: HomeToolbarProps) {
                 >
                     {nakamaStatus?.hostConnectionStatus?.username}'s Library
                 </Tooltip>}
-                {(!isExtensionsLoading && !allExtensions?.extensions?.some(n => n.type === "anime-torrent-provider") && serverStatus?.settings?.library?.torrentProvider !== TORRENT_PROVIDER.NONE) &&
-                    <SeaLink href="/extensions?tab=marketplace&type=anime-torrent-provider">
+                {(!missingExtensionsDismissed && !isExtensionsLoading &&
+                    !allExtensions?.extensions?.some(n => n.type === "anime-torrent-provider") &&
+                    serverStatus?.settings?.library?.torrentProvider !== TORRENT_PROVIDER.NONE) &&
+                    <SeaLink href="/extensions?tab=marketplace&type=anime-torrent-provider" onClick={() => setMissingExtensionsDismissed(true)}>
                         <span>
                             <Tooltip
                                 trigger={<Button

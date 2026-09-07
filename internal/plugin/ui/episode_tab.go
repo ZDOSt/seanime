@@ -221,6 +221,7 @@ func (m *EpisodeTabManager) listenSelection() {
 			"episodeNumber": payload.EpisodeNumber,
 			"aniDbEpisode":  payload.AniDbEpisode,
 			"episode":       payload.Episode,
+			"requestId":     payload.RequestID,
 		}); err != nil {
 			m.ctx.handleException(err)
 		}
