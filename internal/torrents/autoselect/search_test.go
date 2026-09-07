@@ -90,6 +90,10 @@ func (p *errorSearchProvider) SmartSearch(_ hibiketorrent.AnimeSmartSearchOption
 
 // setupTestAutoSelect creates an AutoSelect instance with a test provider.
 func setupTestAutoSelect(t *testing.T, provider hibiketorrent.AnimeProvider) *AutoSelect {
+	return setupTestAutoSelectWithID(t, "fake-provider", provider)
+}
+
+func setupTestAutoSelectWithID(t *testing.T, providerID string, provider hibiketorrent.AnimeProvider) *AutoSelect {
 	logger := util.NewLogger()
 
 	tempDir := t.TempDir()
@@ -100,12 +104,12 @@ func setupTestAutoSelect(t *testing.T, provider hibiketorrent.AnimeProvider) *Au
 
 	// Create test extension
 	ext := extension.NewAnimeTorrentProviderExtension(&extension.Extension{
-		ID:   "fake-provider",
+		ID:   providerID,
 		Type: extension.TypeAnimeTorrentProvider,
 		Name: "Test Provider",
 	}, provider)
 
-	extensionBankRef.Get().Set("fake-provider", ext)
+	extensionBankRef.Get().Set(providerID, ext)
 
 	metadataProvider := metadata_provider.NewProvider(&metadata_provider.NewProviderImplOptions{
 		Logger:           logger,
@@ -119,7 +123,7 @@ func setupTestAutoSelect(t *testing.T, provider hibiketorrent.AnimeProvider) *Au
 		MetadataProviderRef: util.NewRef(metadataProvider),
 		ExtensionBankRef:    extensionBankRef,
 	})
-	torrentRepository.SetSettings(&itorrent.RepositorySettings{DefaultAnimeProvider: "fake-provider"})
+	torrentRepository.SetSettings(&itorrent.RepositorySettings{DefaultAnimeProvider: providerID})
 
 	return New(&NewAutoSelectOptions{
 		Logger:            logger,
@@ -470,15 +474,15 @@ func TestSearchWithProviderOrderUsesEpisodeSearchOrder(t *testing.T) {
 		},
 		CanSmartSearch: true,
 	}
-	autoSelect := setupTestAutoSelect(t, provider)
+	autoSelect := setupTestAutoSelectWithID(t, itorrent.AIOStreamsProviderID, provider)
 
 	profile := &anime.AutoSelectProfile{
-		Providers:   []string{"fake-provider"},
+		Providers:   []string{itorrent.AIOStreamsProviderID},
 		Resolutions: []string{"1080p"},
 	}
 	torrents, err := autoSelect.searchFromProviderWithProviderOrder(
 		context.Background(),
-		"fake-provider",
+		itorrent.AIOStreamsProviderID,
 		media,
 		1000,
 		true,
